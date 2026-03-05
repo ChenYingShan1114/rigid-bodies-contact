@@ -77,7 +77,11 @@ If you are using Mac or Linux, then issue:
 Compiling the code in the above manner will yield working, but very slow executables. To run the code at full speed, you should compile it in release mode. Starting in the **build directory**, do the following:
 
     cmake .. -DCMAKE_BUILD_TYPE=Release
-    
+
+or
+
+    CMAKE_POLICY_VERSION_MINIMUM=3.5 cmake .. -DCMAKE_BUILD_TYPE=Release
+ 
 Followed by:
 
     make 
