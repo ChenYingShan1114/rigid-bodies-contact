@@ -5,4 +5,4 @@
 //  omega - angular displacement vector
 //Output: 
 //  R - rotation matrix 
-void rodrigues(Eigen::Matrix3d &R, Eigen::Ref<const Eigen::Vector3d> omega);
+void rodrigues(Eigen::Matrix3d &R, Eigen::Ref<const Eigen::Vector3d> omega, double dt);
