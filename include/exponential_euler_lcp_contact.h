@@ -23,46 +23,94 @@
 inline void exponential_euler_lcp_contact(Eigen::VectorXd &q, Eigen::VectorXd &qdot, double dt, 
                             std::vector<Eigen::Matrix66d> &masses, Eigen::Ref<const Eigen::VectorXd> forces,
                             std::vector<Eigen::Vector3d> &n, std::vector<Eigen::Vector3d> &x, std::vector<std::pair<int,int> > &obj) {
-    for (int i = 0; i < masses.size(); i++) {
+    for (int irb = 0; irb < masses.size(); irb++) {
 
         // old time step (t) data
         // inertia and mass
-        Eigen::Matrix3d I = Eigen::Matrix3d::Zero();
-        I = masses[i].block(0, 0, 3, 3);
-        double mass = masses[i](3, 3);
+        Eigen::Matrix3d I = masses[irb].block(0, 0, 3, 3);
+        Eigen::Matrix3d M = masses[irb].block(3, 3, 3, 3);
+
+        // rotation matrix and center
+        Eigen::Matrix3d R = Eigen::Map<const Eigen::Matrix3d>(q.segment<9>(12 * irb).data());
+        Eigen::Matrix3d R2 = R * I * R.transpose();
+        Eigen::Vector3d p = Eigen::Map<const Eigen::Vector3d>(q.segment<3>(12 * irb + 9).data());
+
+        Eigen::Matrix66d masses_inv = Eigen::Matrix66d::Zero();
+        masses_inv.block(0, 0, 3, 3) = R2.inverse();
+        masses_inv.block(3, 3, 3, 3) = M.inverse();
+
+        // anguler velocity
+        Eigen::Vector3d omega = Eigen::Map<const Eigen::Vector3d>(qdot.segment<3>(6 * irb).data());
 
         // torque and force
-        Eigen::Vector3d torque = Eigen::Map<const Eigen::Vector3d>(forces.segment<3>(6 * i).data());
-        Eigen::Vector3d force = Eigen::Map<const Eigen::Vector3d>(forces.segment<3>(6 * i + 3).data());
+        Eigen::Vector6d force_all = forces.segment(6 * irb, 6);
+        force_all.segment(6 * irb, 3) += omega.cross(R2 * omega);
         
-        // rotation matrix and center
-        Eigen::Matrix3d R = Eigen::Map<const Eigen::Matrix3d>(q.segment<9>(12 * i).data());
-        Eigen::Matrix3d R2 = R * I * R.transpose();
-        Eigen::Vector3d center = Eigen::Map<const Eigen::Vector3d>(q.segment<3>(12 * i + 9).data());
+        // angular velocity and velocity with no contact
+        qdot.segment(6 * irb, 6) += dt * masses_inv * force_all;
 
-        // anguler velocity and velocity
-        Eigen::Vector3d omega = Eigen::Map<const Eigen::Vector3d>(qdot.segment<3>(6 * i).data());
-        Eigen::Matrix3d omega_cross = Eigen::Matrix3d::Zero();
-        omega_cross << 0, -omega(2), omega(1),
-                    omega(2), 0, -omega(0),
-                    -omega(1), omega(0), 0;
-        Eigen::Vector3d velocity = Eigen::Map<const Eigen::Vector3d>(qdot.segment<3>(6 * i + 3).data());
+        // find contact points of object irb (this part not test yet)
+        std::vector<Eigen::Vector3d> x_irb;
+        std::vector<Eigen::Vector3d> n_irb; 
+        for (int i = 0; i < obj.size(); i++) {
+            if (obj[i].first == irb) {
+                x_irb.push_back(x[i]);
+                n_irb.push_back(n[i]);
+            } else if (obj[i].second == irb) {
+                x_irb.push_back(x[i]);
+                n_irb.push_back(-n[i]);
+            }
+        }
+
+        // projected Gauss-Seidel
+        Eigen::VectorXd alpha = Eigen::VectorXd::Zero(x_irb.size());
+        Eigen::Matrix36d J;
+        Eigen::Vector3d x_body;
+        Eigen::Vector6d fA;
+        std::vector<Eigen::Vector6d> gAs(x_irb.size());
+        std::vector<double> deltas(x_irb.size());
+
+        for (int i = 0; i < x_irb.size(); i++) {
+            inverse_rigid_body(x_body, x_irb[i], R, p);
+            rigid_body_jacobian(J, R, p, x_body);
+            gAs[i] = J.transpose() * n_irb[i];
+            deltas[i] = dt * gAs[i].transpose() * masses_inv * gAs[i];
+        }
+
+        for (int iter = 0; iter < 1; iter++) {  
+            for (int i = 0; i < x_irb.size(); i++) {
+                fA.setZero();
+                for (int j = 0; j < x_irb.size(); j++) {
+                    if (i != j) {
+                        fA = fA + alpha(j) * gAs[j];
+                    }
+                }
+                double gamma = gAs[i].transpose() * (qdot + dt * masses_inv * fA);
+                alpha(i) = std::max(0.0, -gamma / deltas[i]);
+                qdot = qdot + dt * masses_inv * alpha(i) * gAs[i];
+
+                // More efficient way?
+                // double gamma = gAs[i].transpose() * qdot;
+                // double alpha_old = alpha(i);
+                // alpha(i) = std::max(0.0, alpha_old - gamma / deltas[i]);
+                // qdot = qdot + dt * masses_inv * (alpha(i) - alpha_old) * gAs[i];
+            }
+        }
+
+        // calculate new time step (t + 1) value
+        Eigen::Vector3d omega_new = Eigen::Map<const Eigen::Vector3d>(qdot.segment<3>(6 * irb).data());
+        Eigen::Vector3d velocity_new = Eigen::Map<const Eigen::Vector3d>(qdot.segment<3>(6 * irb + 3).data());
 
         // rodrigues rotation matrix
         Eigen::Matrix3d R_tmp = Eigen::Matrix3d::Zero();
-        rodrigues(R_tmp, omega, dt);
+        rodrigues(R_tmp, omega_new, dt);
 
-        // calculate new time step (t + 1) value
-        Eigen::Vector3d omega_new = R2.inverse() * (R2 * omega + dt * omega_cross * (R2 * omega) + dt * torque);
-        Eigen::Vector3d velocity_new = velocity + dt * force / mass;
         Eigen::Matrix3d R_new = R_tmp * R;
-        Eigen::Vector3d center_new = center + dt * velocity;
+        Eigen::Vector3d p_new = p + dt * velocity_new;
 
         // put new value back to generalized coordinate
-        qdot.segment(6 * i    , 3) = omega_new;
-        qdot.segment(6 * i + 3, 3) = velocity_new;
-        q.segment(12 * i    , 9) = Eigen::Map<Eigen::Matrix<double, 1, 9> >(R_new.data());
-        q.segment(12 * i + 9, 3) = center_new;
-
+        q.segment(12 * irb    , 9) = Eigen::Map<Eigen::Matrix<double, 1, 9> >(R_new.data());
+        q.segment(12 * irb + 9, 3) = p_new;
+        
     }
 }

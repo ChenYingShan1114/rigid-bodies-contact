@@ -205,6 +205,8 @@ inline void assignment_setup(int argc, char **argv, Eigen::VectorXd &q, Eigen::V
     Eigen::Vector3d axis = n0.cross(floor_normal);
 
     Eigen::Matrix3d floor_R = Eigen::AngleAxisd(angle, axis).matrix();
+    // Use the rendered plane's normal for collision detection too.
+    floor_normal = (floor_R * n0).normalized();
 
     //translate plane
     for(unsigned int iv=0; iv<V_floor.rows(); ++iv) {
