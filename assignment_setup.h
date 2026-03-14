@@ -135,6 +135,7 @@ inline void assignment_setup(int argc, char **argv, Eigen::VectorXd &q, Eigen::V
     qdot_ptr = &qdot; 
 
     //setup the floor 
+    // floor_normal << 0.7, 0.7, 0.;
     floor_normal << 0.5, 1.0, 0.5;
     floor_pos << 0. , -0.1, 0.;    
 

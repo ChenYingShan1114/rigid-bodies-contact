@@ -1,4 +1,4 @@
-[![](https://github.com/dilevin/CSC2549-a6-rigid-body-contact/workflows/Build-CSC2549-Assignment-Six/badge.svg)](https://github.com/dilevin/CSC2549-a6-rigid-body-contact/actions)
+# &rarr; [Result](https://chenyingshan1114.github.io/projects/projects_cg/rigidbody/) &larr;
 
 ## Introduction
 
